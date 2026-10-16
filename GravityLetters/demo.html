@@ -20,7 +20,10 @@
 <div class="hint">拖动=削皮 · 单击=坍塌/复原 · R=重置</div>
 
 <script type="module">
-import { createGlyphGravity } from './src/glyphGravity.js?v=20261016161131';
+// Dynamic import with a per-load cache buster. This page is a local tuning demo, and a
+// stale cached engine has more than once looked exactly like "my change did not take
+// effect": a fixed ?v= only busts the cache when the number changes.
+const { createGlyphGravity } = await import('./glyphGravity.js?v=' + Date.now());
 
 const q = new URLSearchParams(location.search);
 const canvas = document.getElementById('c');
