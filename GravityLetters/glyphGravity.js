@@ -641,16 +641,23 @@ export function createGlyphGravity(canvas, options = {}) {
   }
 
   function onPointerUp(ev) {
-    if (pointer.id !== -1 && ev && ev.pointerId !== undefined && ev.pointerId !== pointer.id) return;
+    // A real click delivers pointerup AND lostpointercapture (and sometimes
+    // pointercancel) for the same press. Only the first one may act, otherwise the
+    // toggle runs twice and the collapse is instantly undone — which looks exactly
+    // like "the click did nothing".
+    if (pointer.id === -1) return;
+    if (ev && ev.pointerId !== undefined && ev.pointerId !== pointer.id) return;
+    const id = pointer.id;
+    pointer.down = false;
+    pointer.id = -1;
     // In hover mode peeling is driven by pointer movement alone, so press/release is
     // unambiguous: it is a click. With a real mouse an intended click routinely
     // travels more than dragThreshold, which used to swallow the collapse gesture.
     const dragGesture = opts.eraseMode !== 'hover';
     const wasDrag = dragGesture && pointer.moved > opts.dragThreshold;
     const dur = performance.now() - pointer.downAt;
-    pointer.down = false; pointer.id = -1;
-    if (canvas.releasePointerCapture && ev && ev.pointerId !== undefined) {
-      try { if (canvas.hasPointerCapture(ev.pointerId)) canvas.releasePointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+    if (canvas.releasePointerCapture && canvas.hasPointerCapture(id)) {
+      try { canvas.releasePointerCapture(id); } catch (e) { /* ignore */ }
     }
     armAutoRestore();
     if (wasDrag) { suppressClickUntil = performance.now() + 300; return; }
