@@ -54,7 +54,7 @@ export const GLYPH_GRAVITY_DEFAULTS = {
   clickMaxMs: 600,
   /** pile slope: max height difference between neighbouring columns, px.
    *  bigger = steeper, taller, more separated peaks */
-  repose: 9,
+  repose: 24,
   /** idle glyph shuffling, per particle per second. 0 (default) = each glyph is
    *  randomised once while the text forms and then stays put. */
   shuffle: 0,

@@ -50,12 +50,23 @@ window.__gg = api;
 
 // ---- HUD + FPS (EMA), also collected into a machine-readable report
 let fps = 0, frames = 0, t0 = performance.now();
+const showHud = q.get('hud') !== '0';
+if (!showHud) hudEl.style.display = 'none';
+// The HUD is a DOM write, and getStats() walks every particle: doing both on every
+// frame forces a style/layout recalculation 60 times a second and is the single
+// biggest cost on this page. 4 Hz is plenty for a readout.
+const HUD_MS = 250;
+let lastHud = -1e9;
 function hud() {
-  const dt = performance.now() - t0;
+  const now = performance.now();
+  const dt = now - t0;
   frames++;
-  if (dt > 500) { fps = frames * 1000 / dt; frames = 0; t0 = performance.now(); }
-  const s = api.getStats();
-  hudEl.textContent = `particles ${s.particleCount}   glyph ${s.glyphSize.toFixed(1)}px   ${s.frameMs.toFixed(2)}ms/frame   ${fps.toFixed(0)}fps   state ${s.state}`;
+  if (dt > 500) { fps = frames * 1000 / dt; frames = 0; t0 = now; }
+  if (showHud && now - lastHud >= HUD_MS) {
+    lastHud = now;
+    const s = api.getStats();
+    hudEl.textContent = `particles ${s.particleCount}   glyph ${s.glyphSize.toFixed(1)}px   ${s.frameMs.toFixed(2)}ms/frame   ${fps.toFixed(0)}fps   state ${s.state}`;
+  }
   requestAnimationFrame(hud);
 }
 requestAnimationFrame(hud);
