@@ -40,6 +40,8 @@ const engineOpts = {
 if (q.get('color')) engineOpts.color = q.get('color');
 if (q.get('fall')) engineOpts.fallColor = q.get('fall');
 if (q.get('repose')) engineOpts.repose = Number(q.get('repose'));
+if (q.get('peaks') !== null) engineOpts.peaks = Number(q.get('peaks'));
+if (q.get('peakmass')) engineOpts.peakMass = Number(q.get('peakmass'));
 if (q.get('rot') === '0') engineOpts.glyphRotation = false;
 if (q.get('shuffle')) engineOpts.shuffle = Number(q.get('shuffle'));
 if (q.get('spring') === '1') engineOpts.restoreSpring = true;

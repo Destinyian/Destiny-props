@@ -55,6 +55,12 @@ export const GLYPH_GRAVITY_DEFAULTS = {
   /** pile slope: max height difference between neighbouring columns, px.
    *  bigger = steeper, taller, more separated peaks */
   repose: 24,
+  /** mountains to shape the settled pile into: 0 = leave the raw mass histogram alone
+   *  (a flat-topped ridge on wide text), 1+ = that many broad mounds with flat runs
+   *  between them. Fewer peaks than the histogram would produce, and gentler. */
+  peaks: 3,
+  /** share of the glyphs that goes into those mounds; the rest forms the flat bed */
+  peakMass: 0.78,
   /** idle glyph shuffling, per particle per second. 0 (default) = each glyph is
    *  randomised once while the text forms and then stays put. */
   shuffle: 0,
@@ -194,14 +200,70 @@ export function createGlyphGravity(canvas, options = {}) {
     p.col = -1;
   }
 
-  /** Work out the settled pile *before* anything moves: relax the mass histogram by the
-   *  same angle-of-repose rule, then give every glyph the column it will end up in.
-   *  Because the result is already a fixed point of relaxPile(), the pile is static as
-   *  soon as the last glyph lands — no post-landing shuffling. */
-  function presettleColumns() {
-    const counts = new Int32Array(cols);
-    for (const p of particles) counts[columnOf(p.x)]++;
+  /** How many glyphs each column must hold once the pile has settled.
+   *  `peaks = 0` relaxes the raw mass histogram by the angle-of-repose rule; on a
+   *  full-width block of text that converges to one flat-topped ridge. `peaks >= 1`
+   *  instead shapes the profile into that many broad mounds on a thin flat bed: the mounds
+   *  carry most of the mass, the bed provides the flat runs beside them, and the mound
+   *  slopes stay strictly below the repose limit — so the result is still a fixed point of
+   *  relaxPile() and nothing shuffles after it lands. */
+  function settledCounts() {
+    const M = particles.length;
     const need = Math.max(2, Math.round(opts.repose / packing));
+    const counts = new Int32Array(cols);
+    if (opts.peaks >= 1 && need >= 3 && M > cols * 2) {
+      // slope in glyph-heights per column; `need - 2` leaves room for the rounding below
+      // (which can add one glyph to a column) without ever reaching the flow threshold
+      const s = Math.max(1, need - 2);
+      const N = clamp(opts.peaks | 0, 1, Math.max(1, Math.floor(cols / 6)));
+      const raw = new Int32Array(cols);
+      for (const p of particles) raw[columnOf(p.x)]++;
+      // anchors: even spacing, nudged to the locally heaviest column so the mountains sit
+      // under the denser strokes instead of on a synthetic grid
+      const span = cols / N;
+      const anchors = [];
+      for (let i = 0; i < N; i++) {
+        const centre = (i + 0.5) * span;
+        const lo = clamp(Math.round(centre - span * 0.45), 0, cols - 1);
+        const hi = clamp(Math.round(centre + span * 0.45), 0, cols - 1);
+        let best = clamp(Math.round(centre), 0, cols - 1);
+        let bestV = -1;
+        for (let c = lo; c <= hi; c++) if (raw[c] > bestV) { bestV = raw[c]; best = c; }
+        anchors.push(best);
+      }
+      // a raised-cosine dome: area A·W, rounded apex (a triangle reads as too sharp) and a
+      // maximum flank slope of 1.57·A/W, which is what `s` limits
+      const share = clamp(opts.peakMass, 0.2, 0.95) / N;
+      let W = Math.min(Math.sqrt((1.5708 * M * share) / s), span * 0.95);
+      let A = (s * W) / 1.5708;
+      if (N * A * W > M * 0.92) {               // mounds would leave no bed: shrink them
+        W *= Math.sqrt((M * 0.88) / (N * A * W));
+        A = (s * W) / 1.5708;
+      }
+      const bed = Math.max(0, (M - N * A * W) / cols);
+      for (let c = 0; c < cols; c++) {
+        let v = bed;
+        for (const a of anchors) {
+          const d = Math.abs(c - a) / W;
+          if (d < 1) v += A * (0.5 + 0.5 * Math.cos(Math.PI * d));
+        }
+        counts[c] = v;
+      }
+      // integers that still sum to exactly M (largest remainder)
+      const out = new Int32Array(cols);
+      const frac = [];
+      let sum = 0;
+      for (let c = 0; c < cols; c++) {
+        out[c] = Math.floor(counts[c]);
+        sum += out[c];
+        frac.push([c, counts[c] - out[c]]);
+      }
+      frac.sort((a, b) => b[1] - a[1]);
+      let rest = M - sum;
+      for (let i = 0; i < frac.length && rest > 0; i++) { out[frac[i][0]]++; rest--; }
+      return out;
+    }
+    for (const p of particles) counts[columnOf(p.x)]++;
     for (let pass = 0; pass < 600; pass++) {
       let moved = 0;
       for (let c = 0; c < cols - 1; c++) {
@@ -210,6 +272,14 @@ export function createGlyphGravity(canvas, options = {}) {
       }
       if (moved === 0) break;
     }
+    return counts;
+  }
+
+  /** Work out the settled pile *before* anything moves, then give every glyph the column
+   *  it will end up in. Because the result is already a fixed point of relaxPile(), the
+   *  pile is static as soon as the last glyph lands — no post-landing shuffling. */
+  function presettleColumns() {
+    const counts = settledCounts();
     // keep left-to-right coherence: glyphs are handed out in their own x order
     const order = particles.map((p, i) => i).sort((a, b) => particles[a].x - particles[b].x);
     let k = 0;

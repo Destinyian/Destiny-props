@@ -73,6 +73,8 @@ api.destroy();    // 移除所有监听、停掉 rAF、清空画布
 | `eraseMode` | `'hover'` | `hover` = 鼠标划过即削（默认，同参考站）/ `drag` = 按住才削 / `both` |
 | `dragThreshold` / `clickMaxMs` | `6` / `350` | 拖动 vs 单击的判定 |
 | `repose` | `24` | 堆的休止角（相邻列允许的高度差，px）：越大越尖 |
+| **`peaks`** | `3` | 坍塌时把堆形塑造成几座宽山，山体之间留平坦底盘。`0` = 按文字质量分布自然弛豫（宽屏会变成一条平顶脊）|
+| `peakMass` | `0.78` | 质量中进入山体的比例，其余形成平坦底盘 |
 | `shuffle` | `0` | 待机时字符随机跳变的频率。0 = 成形时随机一次后**永不变动**（默认）|
 | `reducedMotion` | `'auto'` | 跟随 `prefers-reduced-motion`；`instant` 直接落位不播动画 |
 | `restoreSpring` | `false` | **仅诊断用**：复原时改用欠阻尼弹簧（会过冲回弹），用于 A/B 对比，正常别开 |
