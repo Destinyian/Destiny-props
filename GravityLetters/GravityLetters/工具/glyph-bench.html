@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>glyph draw benchmark</title>
+<style>html,body{margin:0;background:#0b0b12;color:#ddd;font:12px monospace}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c" width="1440" height="900"></canvas>
+<pre id="out">running…</pre>
+<script>
+// Per-frame cost of the ways to draw thousands of glyph particles.
+//   text : ctx.fillText, axis aligned (glyph cache friendly)
+//   rot  : ctx.fillText, rotated per particle, quantised to ANG angles (defeats the cache)
+//   atlas: ctx.drawImage from a pre-rendered glyph atlas
+// Same particle count, same motion, same size for every mode.
+//   ?n=8000&fs=11&w=600&cluster=1&ang=16&fam=monospace
+const P = new URLSearchParams(location.search);
+const N = Number(P.get('n') || 8000);
+const FS = Number(P.get('fs') || 11);
+const WEIGHT = P.get('w') || 'normal';
+const CLUSTER = P.get('cluster') === '1';
+const ANG = Number(P.get('ang') || 16);
+const FAM = P.get('fam') || 'monospace';
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const out = document.getElementById('out');
+const POOL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%&*+=<>/?';
+const FONT = WEIGHT + ' ' + FS + 'px ' + FAM;
+
+const COS = new Float32Array(ANG), SIN = new Float32Array(ANG);
+for (let i = 0; i < ANG; i++) { const a = i * 2 * Math.PI / ANG; COS[i] = Math.cos(a); SIN[i] = Math.sin(a); }
+
+const ATLAS_COLS = 12, CELL = Math.ceil(FS * 1.6), ATLAS_ROWS = Math.ceil(POOL.length / ATLAS_COLS);
+const atlas = document.createElement('canvas');
+atlas.width = ATLAS_COLS * CELL; atlas.height = ATLAS_ROWS * CELL;
+{
+  const a = atlas.getContext('2d');
+  a.font = FONT; a.fillStyle = '#e8e6ff'; a.textBaseline = 'top';
+  for (let i = 0; i < POOL.length; i++) a.fillText(POOL[i], (i % ATLAS_COLS) * CELL + 2, ((i / ATLAS_COLS) | 0) * CELL + 2);
+}
+const cellX = (i) => (i % ATLAS_COLS) * CELL, cellY = (i) => ((i / ATLAS_COLS) | 0) * CELL;
+
+const parts = [];
+for (let i = 0; i < N; i++) {
+  const y = CLUSTER ? cv.height - 200 + Math.random() * 200 : Math.random() * cv.height;
+  parts.push({ x: Math.random() * cv.width, y, vx: (Math.random() - .5) * .6, vy: (Math.random() - .5) * .6,
+               ci: (Math.random() * POOL.length) | 0, ai: (Math.random() * ANG) | 0 });
+}
+
+function step() {
+  for (const p of parts) {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0 || p.x > cv.width) p.vx *= -1;
+    if (p.y < 0 || p.y > cv.height) p.vy *= -1;
+  }
+}
+
+function bench(mode, frames) {
+  const t0 = performance.now();
+  for (let f = 0; f < frames; f++) {
+    step();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (mode === 'text') {
+      ctx.font = FONT; ctx.fillStyle = '#e8e6ff'; ctx.textBaseline = 'middle';
+      for (const p of parts) ctx.fillText(POOL[p.ci], p.x, p.y);
+    } else if (mode === 'rot') {
+      ctx.font = FONT; ctx.fillStyle = '#e8e6ff'; ctx.textBaseline = 'middle';
+      for (const p of parts) {
+        const c = COS[p.ai], s = SIN[p.ai];
+        ctx.setTransform(c, s, -s, c, p.x, p.y);
+        ctx.fillText(POOL[p.ci], 0, 0);
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    } else {
+      for (const p of parts) ctx.drawImage(atlas, cellX(p.ci), cellY(p.ci), CELL, CELL, p.x, p.y, CELL, CELL);
+    }
+  }
+  return (performance.now() - t0) / frames;
+}
+
+const frames = 40;
+for (const m of ['text', 'rot', 'atlas']) bench(m, 5);              // warm up
+const res = {};
+for (const m of ['text', 'rot', 'atlas']) res[m] = bench(m, frames);
+
+out.textContent = `n=${N}  fs=${FS}  w=${WEIGHT}  cluster=${CLUSTER}  angles=${ANG}  fam=${FAM}
+text  : ${res.text.toFixed(2)} ms/frame   (${(1000 / res.text).toFixed(0)} fps ceiling)
+rot   : ${res.rot.toFixed(2)} ms/frame   (${(1000 / res.rot).toFixed(0)} fps ceiling)   ${(res.rot / res.text).toFixed(2)}x text
+atlas : ${res.atlas.toFixed(2)} ms/frame   (${(1000 / res.atlas).toFixed(0)} fps ceiling)   ${(res.atlas / res.text).toFixed(2)}x text
+ua=${navigator.userAgent.match(/Edg\/[\d.]+|Chrome\/[\d.]+/)?.[0] || '?'}`;
+document.title = `bench n=${N} text=${res.text.toFixed(1)} rot=${res.rot.toFixed(1)}`;
+</script>
+</body>
+</html>

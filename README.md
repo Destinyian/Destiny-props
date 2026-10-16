@@ -12,10 +12,12 @@ Self-built collection of front-end props / components — the ones worth reusing
 
 ```
 <Component>/
-├── <engine>.js         框架无关引擎（传入 canvas 即可用，不依赖 React）
-├── <Component>.tsx     React 封装：'use client' + forwardRef 命令式 API
-├── <engine>.d.ts       类型
-├── demo.html           零依赖演示（需用静态服务器打开：ESM 不能走 file://）
+├── src/<engine>.js     框架无关引擎（传入 canvas 即可用，不依赖 React）
+├── src/<Component>.tsx React 封装：'use client' + forwardRef 命令式 API
+├── src/<engine>.d.ts   类型
+├── tests/              纯函数行为测试（node --test）
+├── index.html          零依赖演示（需用静态服务器打开：ESM 不能走 file://）
+├── serve.mjs           零依赖静态服务器
 └── README.md           props 表 + 设计取舍 + 实测数据
 ```
 
