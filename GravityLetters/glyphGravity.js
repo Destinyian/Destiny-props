@@ -93,6 +93,98 @@ const GLYPH_RATIO = 1.75;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (a, b) => a + Math.random() * (b - a);
 
+/** Pure planner for the settled pile: given how much mass sits above each column, return
+ *  the glyph count every column will hold once the pile has come to rest.
+ *
+ *  `peaks = 0` relaxes the mass histogram by the angle-of-repose rule; across a full-width
+ *  block of text that converges to one flat-topped ridge. `peaks >= 1` shapes the profile
+ *  into that many raised-cosine domes on a thin flat bed instead: the domes carry most of
+ *  the mass, the bed provides the flat runs beside them, and the dome flanks stay strictly
+ *  below the repose limit — so the result is still a fixed point of the flow rule and the
+ *  pile never shuffles after it lands. Exported because this is the part worth testing.
+ */
+export function planSettledColumns({
+  cols, masses, total, repose = 24, packing = 5.4, peaks = 0, peakMass = 0.78,
+}) {
+  const need = Math.max(2, Math.round(repose / packing));
+  const counts = new Int32Array(cols);
+  let M = total;
+  if (M === undefined || M === null) {
+    M = 0;
+    for (let c = 0; c < cols; c++) M += masses[c];
+  }
+  if (peaks >= 1 && need >= 3 && M > cols * 2) {
+    // slope in glyph-heights per column; `need - 2` leaves room for the rounding below
+    // (which can add one glyph to a column) without ever reaching the flow threshold
+    const s = Math.max(1, need - 2);
+    const N = clamp(peaks | 0, 1, Math.max(1, Math.floor(cols / 6)));
+    const span = cols / N;
+    // anchors: even spacing, nudged to the locally heaviest column so the domes sit under
+    // the denser strokes instead of on a synthetic grid
+    const anchors = [];
+    for (let i = 0; i < N; i++) {
+      const centre = (i + 0.5) * span;
+      const lo = clamp(Math.round(centre - span * 0.45), 0, cols - 1);
+      const hi = clamp(Math.round(centre + span * 0.45), 0, cols - 1);
+      let best = clamp(Math.round(centre), 0, cols - 1);
+      let bestV = -1;
+      for (let c = lo; c <= hi; c++) if (masses[c] > bestV) { bestV = masses[c]; best = c; }
+      anchors.push(best);
+    }
+    // a raised-cosine dome: rounded apex (a triangle reads as too sharp), with a maximum
+    // flank slope of 1.57·A/W — which is what `s` limits
+    const share = clamp(peakMass, 0.2, 0.95) / N;
+    let W = Math.min(Math.sqrt((1.5708 * M * share) / s), span * 0.95);
+    let A = (s * W) / 1.5708;
+    const bumpAt = (c) => {
+      let v = 0;
+      for (const a of anchors) {
+        const d = Math.abs(c - a) / W;
+        if (d < 1) v += A * (0.5 + 0.5 * Math.cos(Math.PI * d));
+      }
+      return v;
+    };
+    // Overlapping domes carry less volume than the nominal N·A·W, so measure the real
+    // volume: the bed then absorbs exactly the rest of the mass, and the integer split
+    // below can never run short of glyphs (which would silently fall back to dynamic
+    // landing and weaken the "static as soon as it lands" guarantee).
+    let raw = 0;
+    for (let c = 0; c < cols; c++) raw += bumpAt(c);
+    for (let guard = 0; guard < 40 && raw > M * 0.9; guard++) {
+      const k = Math.sqrt((M * 0.88) / raw);      // keep the rest as flat bed
+      W *= k;
+      A = (s * W) / 1.5708;
+      raw = 0;
+      for (let c = 0; c < cols; c++) raw += bumpAt(c);
+    }
+    const bed = Math.max(0, (M - raw) / cols);
+    for (let c = 0; c < cols; c++) counts[c] = bed + bumpAt(c);
+    // integers that still sum to exactly M (largest remainder)
+    const out = new Int32Array(cols);
+    const frac = [];
+    let sum = 0;
+    for (let c = 0; c < cols; c++) {
+      out[c] = Math.floor(counts[c]);
+      sum += out[c];
+      frac.push([c, counts[c] - out[c]]);
+    }
+    frac.sort((a, b) => b[1] - a[1]);
+    let rest = M - sum;
+    for (let i = 0; i < frac.length && rest > 0; i++) { out[frac[i][0]]++; rest--; }
+    return out;
+  }
+  for (let c = 0; c < cols; c++) counts[c] = masses[c] | 0;
+  for (let pass = 0; pass < 600; pass++) {
+    let moved = 0;
+    for (let c = 0; c < cols - 1; c++) {
+      if (counts[c] - counts[c + 1] >= need) { counts[c]--; counts[c + 1]++; moved++; }
+      else if (counts[c + 1] - counts[c] >= need) { counts[c + 1]--; counts[c]++; moved++; }
+    }
+    if (moved === 0) break;
+  }
+  return counts;
+}
+
 export function createGlyphGravity(canvas, options = {}) {
   // undefined values must not clobber a default: { color: undefined } would otherwise
   // leave fillStyle unset and the text invisible.
@@ -200,79 +292,15 @@ export function createGlyphGravity(canvas, options = {}) {
     p.col = -1;
   }
 
-  /** How many glyphs each column must hold once the pile has settled.
-   *  `peaks = 0` relaxes the raw mass histogram by the angle-of-repose rule; on a
-   *  full-width block of text that converges to one flat-topped ridge. `peaks >= 1`
-   *  instead shapes the profile into that many broad mounds on a thin flat bed: the mounds
-   *  carry most of the mass, the bed provides the flat runs beside them, and the mound
-   *  slopes stay strictly below the repose limit — so the result is still a fixed point of
-   *  relaxPile() and nothing shuffles after it lands. */
+  /** How many glyphs each column must hold once the pile has settled — the plan itself
+   *  lives in planSettledColumns() so that it can be tested without a canvas. */
   function settledCounts() {
-    const M = particles.length;
-    const need = Math.max(2, Math.round(opts.repose / packing));
-    const counts = new Int32Array(cols);
-    if (opts.peaks >= 1 && need >= 3 && M > cols * 2) {
-      // slope in glyph-heights per column; `need - 2` leaves room for the rounding below
-      // (which can add one glyph to a column) without ever reaching the flow threshold
-      const s = Math.max(1, need - 2);
-      const N = clamp(opts.peaks | 0, 1, Math.max(1, Math.floor(cols / 6)));
-      const raw = new Int32Array(cols);
-      for (const p of particles) raw[columnOf(p.x)]++;
-      // anchors: even spacing, nudged to the locally heaviest column so the mountains sit
-      // under the denser strokes instead of on a synthetic grid
-      const span = cols / N;
-      const anchors = [];
-      for (let i = 0; i < N; i++) {
-        const centre = (i + 0.5) * span;
-        const lo = clamp(Math.round(centre - span * 0.45), 0, cols - 1);
-        const hi = clamp(Math.round(centre + span * 0.45), 0, cols - 1);
-        let best = clamp(Math.round(centre), 0, cols - 1);
-        let bestV = -1;
-        for (let c = lo; c <= hi; c++) if (raw[c] > bestV) { bestV = raw[c]; best = c; }
-        anchors.push(best);
-      }
-      // a raised-cosine dome: area A·W, rounded apex (a triangle reads as too sharp) and a
-      // maximum flank slope of 1.57·A/W, which is what `s` limits
-      const share = clamp(opts.peakMass, 0.2, 0.95) / N;
-      let W = Math.min(Math.sqrt((1.5708 * M * share) / s), span * 0.95);
-      let A = (s * W) / 1.5708;
-      if (N * A * W > M * 0.92) {               // mounds would leave no bed: shrink them
-        W *= Math.sqrt((M * 0.88) / (N * A * W));
-        A = (s * W) / 1.5708;
-      }
-      const bed = Math.max(0, (M - N * A * W) / cols);
-      for (let c = 0; c < cols; c++) {
-        let v = bed;
-        for (const a of anchors) {
-          const d = Math.abs(c - a) / W;
-          if (d < 1) v += A * (0.5 + 0.5 * Math.cos(Math.PI * d));
-        }
-        counts[c] = v;
-      }
-      // integers that still sum to exactly M (largest remainder)
-      const out = new Int32Array(cols);
-      const frac = [];
-      let sum = 0;
-      for (let c = 0; c < cols; c++) {
-        out[c] = Math.floor(counts[c]);
-        sum += out[c];
-        frac.push([c, counts[c] - out[c]]);
-      }
-      frac.sort((a, b) => b[1] - a[1]);
-      let rest = M - sum;
-      for (let i = 0; i < frac.length && rest > 0; i++) { out[frac[i][0]]++; rest--; }
-      return out;
-    }
-    for (const p of particles) counts[columnOf(p.x)]++;
-    for (let pass = 0; pass < 600; pass++) {
-      let moved = 0;
-      for (let c = 0; c < cols - 1; c++) {
-        if (counts[c] - counts[c + 1] >= need) { counts[c]--; counts[c + 1]++; moved++; }
-        else if (counts[c + 1] - counts[c] >= need) { counts[c + 1]--; counts[c]++; moved++; }
-      }
-      if (moved === 0) break;
-    }
-    return counts;
+    const masses = new Int32Array(cols);
+    for (const p of particles) masses[columnOf(p.x)]++;
+    return planSettledColumns({
+      cols, masses, total: particles.length, repose: opts.repose, packing,
+      peaks: opts.peaks, peakMass: opts.peakMass,
+    });
   }
 
   /** Work out the settled pile *before* anything moves, then give every glyph the column

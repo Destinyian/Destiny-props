@@ -23,7 +23,7 @@
 // Dynamic import with a per-load cache buster. This page is a local tuning demo, and a
 // stale cached engine has more than once looked exactly like "my change did not take
 // effect": a fixed ?v= only busts the cache when the number changes.
-const { createGlyphGravity } = await import('./glyphGravity.js?v=' + Date.now());
+const { createGlyphGravity } = await import('./src/glyphGravity.js?v=' + Date.now());
 
 const q = new URLSearchParams(location.search);
 const canvas = document.getElementById('c');
