@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>glyph-gravity demo</title>
+<style>
+  html,body{margin:0;height:100%;background:#07070d;color:#cfc9ee;
+    font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden}
+  #c{display:block;width:100vw;height:100vh;cursor:crosshair;touch-action:none;outline:none}
+  #hud{position:fixed;left:12px;top:10px;opacity:.66;white-space:pre;pointer-events:none;font-size:11px}
+  #report{position:fixed;left:12px;bottom:10px;margin:0;opacity:.8;white-space:pre;font-size:11px}
+  .hint{position:fixed;right:12px;bottom:10px;opacity:.45;font-size:11px}
+</style>
+</head>
+<body>
+<canvas id="c" tabindex="0" aria-label="字符重力画布：按住拖动像削皮一样擦除字符，点击坍塌成堆，再点复原"></canvas>
+<div id="hud"></div>
+<pre id="report"></pre>
+<div class="hint">拖动=削皮 · 单击=坍塌/复原 · R=重置</div>
+
+<script type="module">
+import { createGlyphGravity } from './src/glyphGravity.js';
+
+const q = new URLSearchParams(location.search);
+const canvas = document.getElementById('c');
+const hudEl = document.getElementById('hud');
+const reportEl = document.getElementById('report');
+
+const engineOpts = {
+  text: (q.get('text') || 'GRAVITY\nLETTERS').replace(/\\n/g, '\n'),
+  density: Number(q.get('density') || 7),
+  maxParticles: Number(q.get('max') || 14000),
+  eraseRadius: Number(q.get('radius') || 56),
+  eraseMode: q.get('erase') || undefined,
+};
+if (q.get('color')) engineOpts.color = q.get('color');
+if (q.get('fall')) engineOpts.fallColor = q.get('fall');
+if (q.get('repose')) engineOpts.repose = Number(q.get('repose'));
+if (q.get('rot') === '0') engineOpts.glyphRotation = false;
+if (q.get('shuffle')) engineOpts.shuffle = Number(q.get('shuffle'));
+if (q.get('spring') === '1') engineOpts.restoreSpring = true;
+if (q.get('auto') !== null) engineOpts.autoRestoreMs = Number(q.get('auto'));
+if (q.get('static') === '0') engineOpts.staticSettle = false;
+const api = createGlyphGravity(canvas, {
+  ...engineOpts,
+  onStateChange: (s) => { window.__states = (window.__states || []).concat(s); },
+});
+window.__gg = api;
+
+// ---- HUD + FPS (EMA), also collected into a machine-readable report
+let fps = 0, frames = 0, t0 = performance.now();
+function hud() {
+  const dt = performance.now() - t0;
+  frames++;
+  if (dt > 500) { fps = frames * 1000 / dt; frames = 0; t0 = performance.now(); }
+  const s = api.getStats();
+  hudEl.textContent = `particles ${s.particleCount}   glyph ${s.glyphSize.toFixed(1)}px   ${s.frameMs.toFixed(2)}ms/frame   ${fps.toFixed(0)}fps   state ${s.state}`;
+  requestAnimationFrame(hud);
+}
+requestAnimationFrame(hud);
+
+// ---- real pointer-event driving (this is what the app sees, not an internal call)
+const fire = (type, x, y) => canvas.dispatchEvent(new PointerEvent(type, {
+  bubbles: true, cancelable: true, composed: true, isPrimary: true, button: 0,
+  buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse',
+  clientX: x, clientY: y,
+}));
+const pt = (fx, fy) => { const r = canvas.getBoundingClientRect(); return [r.left + r.width * fx, r.top + r.height * fy]; };
+
+function peel() {                      // a diagonal stroke, like a knife peeling the text
+  const [x0, y0] = pt(0.16, 0.20);
+  fire('pointerdown', x0, y0);
+  let i = 0;
+  const t = setInterval(() => {
+    i++;
+    const [x, y] = pt(0.16 + i * 0.021, 0.20 + i * 0.013);
+    fire('pointermove', x, y);
+    if (i >= 26) { clearInterval(t); fire('pointerup', x, y); }
+  }, 16);
+}
+function hoverOnly() {                 // no pointerdown at all: proves hover-erase works
+  let i = 0;
+  const t = setInterval(() => {
+    i++;
+    const [x, y] = pt(0.16 + i * 0.021, 0.20 + i * 0.013);
+    fire('pointermove', x, y);
+    if (i >= 26) clearInterval(t);
+  }, 16);
+}
+function movingClick() {               // a realistic click: press, drift a few px, release
+  const [x, y] = pt(0.5, 0.5);
+  fire('pointerdown', x, y);
+  const drifts = [[5, 2], [9, 5], [14, 8]];      // ~27px of travel while pressed
+  drifts.forEach(([dx, dy], i) => setTimeout(() => fire('pointermove', x + dx, y + dy), 25 * (i + 1)));
+  setTimeout(() => fire('pointerup', x + 14, y + 8), 130);
+}
+function tap(fx = 0.5, fy = 0.85) {    // short press at one spot = click = toggle
+  const [x, y] = pt(fx, fy);
+  fire('pointerdown', x, y);
+  setTimeout(() => fire('pointerup', x, y), 60);
+}
+
+let firstHash = null;
+function report() {
+  const s = api.getStats();
+  if (firstHash === null && s.released === 0 && s.running === false) firstHash = s.glyphHash;
+  const out = {
+    ...s,
+    fps: Number(fps.toFixed(1)),
+    glyphStable: firstHash === null ? null : s.glyphHash === firstHash,
+    states: window.__states || [],
+  };
+  reportEl.textContent = JSON.stringify(out, null, 1);
+  window.__report = out;
+}
+
+const test = q.get('test');
+if (test === 'clickmove') setTimeout(() => { movingClick(); setTimeout(report, 4000); }, 800);
+else if (test === 'clickmove2') {
+  setTimeout(() => movingClick(), 800);            // click 1 -> everything falls
+  setTimeout(() => movingClick(), 5200);           // click 2 -> everything comes back
+  setTimeout(report, 9500);
+}
+else if (test === 'hover') setTimeout(() => { hoverOnly(); setTimeout(report, 2400); }, 800);
+else if (test === 'peel') setTimeout(() => { peel(); setTimeout(report, 2200); }, 800);
+else if (test === 'collapse') setTimeout(() => { tap(); setTimeout(report, 3500); }, 800);
+else if (test === 'collapse-restore') {
+  setTimeout(() => { tap(); }, 800);
+  setTimeout(() => { tap(); setTimeout(report, 1800); }, 4200);
+} else setTimeout(report, 2000);
+setInterval(report, 1000);
+window.__peel = peel; window.__tap = tap;
+</script>
+</body>
+</html>
