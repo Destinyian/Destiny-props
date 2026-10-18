@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chroma Halo · cheap version (control)</title>
+<style>
+  :root {
+    --bg: #f2efe8;
+    --fg: #1e1a34;
+    --muted: #6f6885;
+    --line: rgba(30, 26, 52, .14);
+  }
+  body[data-theme="dark"] {
+    --bg: #08070f;
+    --fg: #ece8ff;
+    --muted: #9991b8;
+    --line: rgba(236, 232, 255, .14);
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+  }
+  #stage { position: fixed; inset: 0; background: var(--bg); cursor: crosshair; overflow: hidden; }
+  #halo {
+    position: absolute;
+    left: 0; top: 0;
+    width: 180px; height: 180px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(54, 46, 130, .55), transparent 70%);
+    filter: blur(24px);
+    mix-blend-mode: multiply;
+    transform: translate(-9999px, -9999px);
+    will-change: transform;
+  }
+  .copy {
+    position: absolute;
+    left: clamp(28px, 7vw, 120px);
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: 640px;
+    pointer-events: none;
+  }
+  .eyebrow {
+    margin: 0 0 20px;
+    color: var(--muted);
+    font: 600 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(44px, 8.4vw, 118px);
+    line-height: .95;
+    letter-spacing: -.045em;
+    font-weight: 650;
+  }
+  h1 em { color: var(--ink, #362e82); font-style: normal; }
+  p.lead { max-width: 28em; color: var(--muted); }
+  .hud {
+    position: fixed;
+    left: clamp(20px, 3vw, 40px);
+    top: 18px;
+    color: var(--muted);
+    font: 10.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre;
+    pointer-events: none;
+  }
+  .tools { position: fixed; top: 16px; right: 18px; display: flex; gap: 7px; }
+  .tools button {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--fg);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    cursor: pointer;
+  }
+  .note {
+    position: fixed;
+    right: 18px;
+    bottom: 20px;
+    max-width: 300px;
+    text-align: right;
+    color: var(--muted);
+    font: 10px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    opacity: .8;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body data-theme="light">
+<div id="stage">
+  <div id="halo" aria-hidden="true"></div>
+  <div class="copy">
+    <p class="eyebrow">control · no memory · one composited layer</p>
+    <h1>The glow<br><em>follows</em>.</h1>
+    <p class="lead">
+      这正是被替换掉的廉价版本：一个 radial-gradient 加 blur(24px) 跟着指针。
+      它的圆心永远是指针，半径永远不变，路径没有记忆；停手后立刻回到背景。
+    </p>
+  </div>
+  <div class="hud" id="hud"></div>
+  <div class="tools">
+    <button id="theme" type="button">Dark page</button>
+  </div>
+  <div class="note">cheap.html — the control for Verify.<br>Same pointer path, no field, no trail.</div>
+</div>
+
+<script>
+const q = new URLSearchParams(location.search);
+const body = document.body;
+const stage = document.getElementById('stage');
+const halo = document.getElementById('halo');
+const hudEl = document.getElementById('hud');
+const themeBtn = document.getElementById('theme');
+
+function theme() { return body.dataset.theme === 'dark' ? 'dark' : 'light'; }
+function applyTheme(next) {
+  body.dataset.theme = next;
+  themeBtn.textContent = next === 'dark' ? 'Light page' : 'Dark page';
+  halo.style.mixBlendMode = next === 'dark' ? 'screen' : 'multiply';
+  halo.style.background = next === 'dark'
+    ? 'radial-gradient(closest-side, rgba(120, 104, 220, .55), transparent 70%)'
+    : 'radial-gradient(closest-side, rgba(54, 46, 130, .55), transparent 70%)';
+}
+themeBtn.addEventListener('click', () => applyTheme(theme() === 'dark' ? 'light' : 'dark'));
+
+let x = -9999;
+let y = -9999;
+let moves = 0;
+stage.addEventListener('pointermove', (ev) => {
+  const rect = stage.getBoundingClientRect();
+  x = ev.clientX - rect.left;
+  y = ev.clientY - rect.top;
+  moves++;
+  halo.style.transform = `translate(${x - 90}px, ${y - 90}px)`;
+}, { passive: true });
+
+window.__cheap = {
+  get theme() { return theme(); },
+  setTheme: applyTheme,
+  stats: () => ({ mode: theme() === 'dark' ? 'smoke' : 'ink', x, y, moves, trail: false }),
+  move(fx, fy) {
+    const rect = stage.getBoundingClientRect();
+    stage.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true, isPrimary: true, pointerId: 1, pointerType: 'mouse',
+      clientX: rect.left + fx * rect.width, clientY: rect.top + fy * rect.height,
+    }));
+  },
+};
+
+setInterval(() => {
+  hudEl.textContent = `${theme() === 'dark' ? 'smoke' : 'ink'} · ${moves} moves · no field\n`
+    + `x ${Math.round(x)} · y ${Math.round(y)} · trail 0 ms`;
+}, 250);
+
+applyTheme(q.get('theme') === 'dark' ? 'dark' : 'light');
+</script>
+</body>
+</html>
