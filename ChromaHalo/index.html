@@ -190,7 +190,7 @@
     <h1>The halo<br><em>remembers</em>.</h1>
     <p class="lead">
       快速划过：整条扫过的路径留在页面上，而不是一个跟着指针的圆。停手之后墨迹继续漂移，
-      约 0.6 秒内淡到只剩笔头。静置 1.5 秒，一个看不见的漫游者会自己接着画。
+      尾部会保持一会儿，约 1.2 秒后才明显变淡。静置 1.5 秒，一个看不见的漫游者会自己接着画。
     </p>
     <div class="chips">
       <span>2D canvas · 0.25× grid</span>
@@ -256,9 +256,9 @@ if (engineOpts.blur === undefined) engineOpts.blur = 12;
 // same prop would be invisible (white multiply = no change), so applyTheme()
 // swaps to the ink hue. An explicit ?color= disables that swap.
 if (engineOpts.color === undefined) engineOpts.color = '#ffffff';
-// the wanderer's path is deliberately slow; at 1440x900 a speed of 2 keeps the
-// idle trail readable instead of parking a blob in one place
-if (engineOpts.autoplaySpeed === undefined) engineOpts.autoplaySpeed = 2;
+// the wanderer's path is deliberately slow; at 1440x900 a speed of 3 keeps the
+// idle trail a moving ribbon instead of parking a dense blob over the copy
+if (engineOpts.autoplaySpeed === undefined) engineOpts.autoplaySpeed = 3;
 
 const api = createInkHalo(canvas, engineOpts);
 window.__halo = api;

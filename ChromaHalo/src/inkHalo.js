@@ -34,10 +34,12 @@ export const INK_HALO_DEFAULTS = Object.freeze({
   force: 1,
   /** dye injection multiplier */
   intensity: 1,
-  /** dye lifetime, seconds (the visible film is gone in about this long) */
-  trail: 0.6,
+  /** dye lifetime, seconds (the visible film is gone in about this long).
+   *  The reference's 0.6 s read as "gone too fast" once the tail was visible;
+   *  1.2 s keeps the whole stroke readable while the head is still fresh. */
+  trail: 1.2,
   /** velocity lifetime, seconds (this is the drift after the pointer stops) */
-  drift: 0.6,
+  drift: 1.0,
   /** CSS blur applied to the upscaled simulation, px */
   blur: 8,
   /** overall strength; fades the dye, not the canvas layer */
@@ -82,9 +84,11 @@ const DYE_GAIN = 24;
  * would park a saturated black disc on the page instead of a drifting plume.
  * A smaller gain keeps the idle ink from parking a saturated disc on the page
  * while the pointer path still saturates at the head, where thickness is the
- * point. 2.2 is the "denser smoke" setting requested for the dark showcase.
+ * point. The longer 1.2 s trail already makes the idle plume denser; a gain of
+ * 1.0 plus a faster showcase wanderer keeps it a ribbon instead of a slab over
+ * the copy.
  */
-const AUTOPLAY_DYE_GAIN = 2.2;
+const AUTOPLAY_DYE_GAIN = 1.0;
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -100,8 +104,8 @@ function normOptions(input) {
   opts.size = clamp(Number(opts.size) || 56, 2, 600);
   opts.force = clamp(Number(opts.force) || 0, 0, 10);
   opts.intensity = clamp(Number(opts.intensity) || 0, 0, 10);
-  opts.trail = clamp(Number(opts.trail) || 0.6, 0.05, 30);
-  opts.drift = clamp(Number(opts.drift) || 0.6, 0.05, 30);
+  opts.trail = clamp(Number(opts.trail) || 1.2, 0.05, 30);
+  opts.drift = clamp(Number(opts.drift) || 1.0, 0.05, 30);
   opts.blur = clamp(Number(opts.blur) || 0, 0, 64);
   opts.opacity = clamp(Number(opts.opacity), 0, 1);
   if (!Number.isFinite(opts.opacity)) opts.opacity = 1;

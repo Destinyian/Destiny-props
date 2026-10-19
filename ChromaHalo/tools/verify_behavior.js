@@ -356,7 +356,8 @@ async function main() {
 
     // ------ G6: idle must stop the loop (autoplay off)
     await cdp.evaluate('window.__demo.setTheme("light")');
-    await sleep(3200);
+    // trail 1.2 / drift 1.0 => the loop stops at max()*3+0.5 = 4.1 s
+    await sleep(5200);
     const idle1 = await statsOf(cdp);
     await sleep(1100);
     const idle2 = await statsOf(cdp);
