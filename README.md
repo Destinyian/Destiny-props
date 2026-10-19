@@ -55,14 +55,15 @@ import { GravityLetters } from './GravityLetters/GravityLetters';
 ```tsx
 import { ChromaHalo } from './ChromaHalo/src/ChromaHalo';
 
-<div style={{ position: 'relative', height: '80vh', background: '#f2efe8' }}>
-  <ChromaHalo color="#362E82" size={88} blur={12} />
+<div style={{ position: 'relative', height: '80vh', background: '#08070f' }}>
+  <ChromaHalo color="#ffffff" size={93} blur={12} />
   <div style={{ position: 'relative', zIndex: 1 }}>页面内容</div>
 </div>
 ```
 
 父元素需有尺寸和 `position: relative`；canvas 是 `pointer-events: none`，不挡内容。`mode="auto"`
 会读祖先第一个不透明背景的亮度，图片 / 渐变背景请显式传 `mode="ink"` 或 `mode="smoke"`。
+白色烟只在深色背景上可见；浅色页请用 `#362E82` 等墨色（演示页会自动切换）。
 `ref` 暴露 `getMode()` / `getOptions()` / `getStats()` / `sampleDensity()` / `rebuild()` /
 `setOptions()`。演示与验收：
 

@@ -16,6 +16,11 @@
 
 const STEPS = 256;
 const MAX_DENSITY = 4;
+// Smoke density curve. The spec's 0.35/1.5 produced a thin veil; the prop is
+// used here as a smoke ring, so the tone and especially the alpha ramp are
+// pushed up. Ink mode is unaffected.
+const SMOKE_TONE = 0.5;
+const SMOKE_ALPHA = 2.2;
 
 // ImageData is RGBA bytes. Writing one Uint32 per pixel is roughly twice as
 // fast as four byte stores, but the packed value depends on endianness; the
@@ -164,12 +169,12 @@ export function buildSmokeTable(color, opacity = 1) {
 
   for (let i = 0; i < STEPS; i++) {
     const d = (i / (STEPS - 1)) * MAX_DENSITY;
-    const t = 1 - Math.exp(-0.35 * d);
+    const t = 1 - Math.exp(-SMOKE_TONE * d);
     const tone = oklchToRgb(0.6 + 0.26 * t, thinC + (denseC - thinC) * t, hue);
     rgb[i * 3] = tone.r;
     rgb[i * 3 + 1] = tone.g;
     rgb[i * 3 + 2] = tone.b;
-    alpha[i] = 1 - Math.exp(-1.5 * d);
+    alpha[i] = 1 - Math.exp(-SMOKE_ALPHA * d);
   }
   return { rgb, alpha, opacity, maxDensity: MAX_DENSITY };
 }
@@ -177,12 +182,12 @@ export function buildSmokeTable(color, opacity = 1) {
 /** Convenience for tests / previews: the smoke colour and alpha at one density. */
 export function smokePixel(d, color, opacity = 1) {
   const dd = Math.max(0, Math.min(MAX_DENSITY, d * opacity));
-  const t = 1 - Math.exp(-0.35 * dd);
+  const t = 1 - Math.exp(-SMOKE_TONE * dd);
   const baseC = color.oklch.c;
   const thinC = Math.min(1.3 * baseC, 0.2);
   const denseC = Math.min(0.45 * baseC, 0.07);
   const tone = oklchToRgb(0.6 + 0.26 * t, thinC + (denseC - thinC) * t, color.oklch.h);
-  return { ...tone, a: 1 - Math.exp(-1.5 * dd) };
+  return { ...tone, a: 1 - Math.exp(-SMOKE_ALPHA * dd) };
 }
 
 /**

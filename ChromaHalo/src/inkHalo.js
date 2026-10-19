@@ -80,10 +80,11 @@ const DYE_GAIN = 24;
 /**
  * The wanderer moves at a tenth of a fast swipe, so the same per-frame gain
  * would park a saturated black disc on the page instead of a drifting plume.
- * A smaller gain keeps the idle ink at a readable density (~0.5–1) while the
- * pointer path still saturates at the head, where thickness is the point.
+ * A smaller gain keeps the idle ink from parking a saturated disc on the page
+ * while the pointer path still saturates at the head, where thickness is the
+ * point. 2.2 is the "denser smoke" setting requested for the dark showcase.
  */
-const AUTOPLAY_DYE_GAIN = 1.5;
+const AUTOPLAY_DYE_GAIN = 2.2;
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());

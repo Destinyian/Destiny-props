@@ -180,7 +180,7 @@
   }
 </style>
 </head>
-<body data-theme="light">
+<body data-theme="dark">
 <div id="stage">
   <canvas id="halo" aria-hidden="true"></canvas>
   <div id="cheap" aria-hidden="true"></div>
@@ -215,6 +215,7 @@
 const { createInkHalo } = await import('./src/inkHalo.js?v=' + Date.now());
 
 const q = new URLSearchParams(location.search);
+const fixedColor = q.get('color');   // an explicit ?color= wins over the theme
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('halo');
 const cheapEl = document.getElementById('cheap');
@@ -247,9 +248,14 @@ bool('autoplay'); bool('degrade', 'autoDegrade'); bool('paused'); bool('interact
 
 // This demo is tuned for a 1440x900 stage: the prop's own defaults are size 56
 // and blur 8 (the measured values), but at 900 px tall the measured brush reads
-// small, so the showcase starts at 88 / 12. Both are still URL overridable.
-if (engineOpts.size === undefined) engineOpts.size = 88;
+// small, so the showcase starts at 93 / 12 (the extra 5 px is the requested
+// smoke-ring bump). Both are still URL overridable.
+if (engineOpts.size === undefined) engineOpts.size = 93;
 if (engineOpts.blur === undefined) engineOpts.blur = 12;
+// The showcase starts on the dark page with white smoke. On the light page the
+// same prop would be invisible (white multiply = no change), so applyTheme()
+// swaps to the ink hue. An explicit ?color= disables that swap.
+if (engineOpts.color === undefined) engineOpts.color = '#ffffff';
 // the wanderer's path is deliberately slow; at 1440x900 a speed of 2 keeps the
 // idle trail readable instead of parking a blob in one place
 if (engineOpts.autoplaySpeed === undefined) engineOpts.autoplaySpeed = 2;
@@ -262,9 +268,10 @@ const theme = () => (body.dataset.theme === 'dark' ? 'dark' : 'light');
 function applyTheme(next) {
   body.dataset.theme = next;
   themeBtn.textContent = next === 'dark' ? 'Light page' : 'Dark page';
+  if (!fixedColor) api.setOptions({ color: next === 'dark' ? '#ffffff' : '#362E82' });
   cheapEl.style.mixBlendMode = next === 'dark' ? 'screen' : 'multiply';
   cheapEl.style.background = next === 'dark'
-    ? 'radial-gradient(closest-side, rgba(120, 104, 220, .55), transparent 70%)'
+    ? 'radial-gradient(closest-side, rgba(255, 255, 255, .62), transparent 70%)'
     : 'radial-gradient(closest-side, rgba(54, 46, 130, .55), transparent 70%)';
 }
 themeBtn.addEventListener('click', () => applyTheme(theme() === 'dark' ? 'light' : 'dark'));
@@ -363,7 +370,7 @@ function hud() {
     + `${s.reduceMotion ? 'reduced-motion' : 'motion allowed'} · ${s.paused ? 'paused' : 'live'}`;
 }
 if (showHud) setInterval(hud, 250);
-applyTheme(q.get('theme') === 'dark' ? 'dark' : 'light');
+applyTheme(q.get('theme') === 'light' ? 'light' : 'dark');
 if (cheap) setCheap(true);
 if (!autoplay) setAutoplay(false);
 if (paused) setPaused(true);

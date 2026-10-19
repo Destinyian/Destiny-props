@@ -19,7 +19,9 @@ import zlib from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:4181';
-const QUERY = process.env.HALO_QUERY || 'hud=0&autoplay=0&degrade=0&quality=medium';
+// The demo now starts on the dark page with white smoke. The ink half of the
+// verification must ask for the light page (which also swaps the hue to ink).
+const QUERY = process.env.HALO_QUERY || 'hud=0&autoplay=0&degrade=0&quality=medium&theme=light';
 const SWIPE_STEPS = Number(process.env.HALO_STEPS || 40);
 const SWIPE_GAP = Number(process.env.HALO_GAP || 6);
 const OUT = path.resolve('review');
@@ -372,10 +374,14 @@ async function main() {
     await sleep(800);
     const autoClean = await cdp.shot('autoplay-clean.png');
     // the CDP mouse is still parked inside the stage; leave first, or the
-    // engine will correctly treat the page as hovered and never start
+    // engine will correctly treat the page as hovered and never start. A
+    // synthetic enter from the renderer can race the first leave, so leave
+    // once more after enabling, and use a zero idle delay for this check.
     await cdp.evaluate('window.__demo.leave()');
-    await cdp.evaluate('window.__halo.setOptions({ autoplay: true })');
-    await sleep(2600);
+    await cdp.evaluate('window.__halo.setOptions({ autoplay: true, idleDelay: 0 })');
+    await sleep(120);
+    await cdp.evaluate('window.__demo.leave()');
+    await sleep(2400);
     const auto = await statsOf(cdp);
     const autoShot = await cdp.shot('autoplay.png');
     report.autoplay = {

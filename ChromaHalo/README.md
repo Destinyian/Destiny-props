@@ -1,6 +1,6 @@
 # ChromaHalo · 光标墨迹晕
 
-指针不是在拖动一个发光的圆，而是在**推动一个低分辨率的速度场 + 染料场**。快速划过会留下整条被扫过的路径；停手后墨迹继续漂移，约 0.6 秒内淡到只剩笔头。亮色页面上是减法墨（`multiply`，薄处见色相、厚处趋黑），暗色页面上是加法烟（`screen`，亮核 + 彩色边缘）。指针离开 1.5 秒后，一个不可见的漫游者接手（页面首次加载、还没见过指针时，规格允许它立即出现）；开启「减弱动态效果」时它永不出现，但指针仍然有效。
+指针不是在拖动一个发光的圆，而是在**推动一个低分辨率的速度场 + 染料场**。快速划过会留下整条被扫过的路径；停手后墨迹继续漂移，约 0.6 秒内淡到只剩笔头。亮色页面上是减法墨（`multiply`，薄处见色相、厚处趋黑），暗色页面上是加法烟（`screen`，亮核 + 边缘）。默认演示是**深色页 + 白色烟**；传彩色 `color` 时烟边缘会带色相。指针离开 1.5 秒后，一个不可见的漫游者接手（页面首次加载、还没见过指针时，规格允许它立即出现）；开启「减弱动态效果」时它永不出现，但指针仍然有效。
 
 ## 用途
 
@@ -28,11 +28,11 @@ node serve.mjs          # -> http://127.0.0.1:4181
 
 演示页支持 URL 参数实时调参：
 
-`?mode=smoke`（强制模式）`?color=%23362E82`（色相）`?size=88`（笔刷半径）
+`?mode=smoke`（强制模式）`?color=%23ffffff`（色相）`?size=93`（笔刷半径）
 `?force=1`（速度冲量）`?intensity=1`（染料）`?trail=0.6`（染料寿命）
 `?drift=0.6`（速度寿命）`?blur=12`（CSS 模糊）`?quality=high`（模拟分辨率）
 `?autoplay=0`（关漫游者）`?idle=1.5`（空闲阈值）`?degrade=0`（关自动降档）
-`?paused=1`（冻结）`?theme=dark`（深色）`?hud=0`（隐藏 HUD）。
+`?paused=1`（冻结）`?theme=light`（浅色）`?hud=0`（隐藏 HUD）。
 
 对照页：`cheap.html` —— 同样是 180 px 的 radial-gradient + `blur(24px)`，跟随指针，但没有场、没有记忆。
 
@@ -62,18 +62,20 @@ node serve.mjs          # -> http://127.0.0.1:4181
 | `autoDegrade` | `true` | bool | 4 核以下自动 `low` + `blur 0`；p95 > 20 ms 时运行时降档 |
 | `onModeChange` | `null` | `(mode) => void` | auto 模式解析结果变化时触发 |
 
-演示页为了 1440×900 的观感把 `size` 调到 88、`blur` 12、`autoplaySpeed` 2；引擎默认仍是规格里的 56 / 8 / 1，URL 可覆盖。
+演示页为了 1440×900 的观感把 `size` 调到 93（比原来的 88 大 5 px）、`blur` 12、`autoplaySpeed` 2，并默认深色页 + 白色烟；切到浅色页会自动换回 `#362E82` 墨（白色 multiply 在浅色页不可见）。引擎默认仍是规格里的 56 / 8 / 1，URL 可覆盖。
 
 ## React 接入
 
 ```tsx
 import { ChromaHalo } from './ChromaHalo/src/ChromaHalo';
 
-<div style={{ position: 'relative', height: '80vh', background: '#f2efe8' }}>
-  <ChromaHalo color="#362E82" size={88} blur={12} />
+<div style={{ position: 'relative', height: '80vh', background: '#08070f' }}>
+  <ChromaHalo color="#ffffff" size={93} blur={12} />
   <div style={{ position: 'relative', zIndex: 1 }}>页面内容</div>
 </div>
 ```
+
+白色烟只在深色背景上可见；浅色页请用 `color="#362E82"` 或显式 `mode="ink"`。
 
 - 父元素必须有尺寸并且 `position: relative`（或任意非 static 定位）；canvas 是 `position:absolute; inset:0`。
 - 组件只渲染一个 `<canvas>`，`pointer-events: none`、`aria-hidden="true"`；引擎监听父元素，所以不会挡住链接、按钮或文本选择。
@@ -87,19 +89,21 @@ import { ChromaHalo } from './ChromaHalo/src/ChromaHalo';
 - **低分辨率模拟，低分辨率画布，CSS 放大。** 网格上限 `320×200 = 64,000` 格；可见 canvas 的 backing store 就是网格，CSS 拉到容器大小，`blur` 收边。这样每帧只有一次 `putImageData`，没有全分辨率 `drawImage`。刻意不乘 `devicePixelRatio`：高 DPI 上会软，但这是性能预算的一部分。
 - **两个衰减常数。** 染料 `exp(-dt / (trail/3))`，速度 `exp(-dt / (drift/3))`。合成一个会要么拖尾太长，要么不漂移。
 - **压力投影是「流体」和「拖影」的分界。** 4 次 Jacobi 让轨迹边缘卷起来；少于 3 次会退化成模糊的虫。
+- **笔刷是半强度半径，不是边界。** `w = 2^(-d²)` 在 `d = size` 处正好 0.5；如果只采样到 1× size，就在半强度处硬切，屏幕上就是一个 176 px 的方块。现在采样到 2.5× size，并在最后 0.5× 用线性窗羽化到 0：中心半强度不变，外边自然消失，方形边缘不再出现。
 - **染料增益 `24`。** 规格里的 `d += 2·dt·intensity·w` 在 60 fps 下每帧只有 0.033；快速划过一个格子只被笔刷覆盖一两帧，路径会低于可见阈值。规格同时给出 `d` 常用 0–3，所以引擎把连续注入乘 `24`（`intensity` 仍然乘在外面）。这是对 CPU 场单位的标定，不是新参数；`inkField.splat` 本身保持纯函数。
-- **漫游者染料增益 `1.5`。** 漫游者只有指针 1/10 的速度，若沿用 24，会在原地堆出一个饱和黑色圆盘。`1.5` 让它保持 d≈0.5–1 的漂移烟团。
+- **漫游者染料增益 `2.2`。** 漫游者只有指针 1/10 的速度，若沿用 24，会在原地堆出一个饱和黑色圆盘。`2.2` 让空闲烟更浓，同时不会变成一块实心圆盘。
+- **烟更浓。** 烟色的 tone 系数从规格的 0.35 调到 0.5，alpha 从 1.5 调到 2.2；薄烟更早显形，核心更快到近白/近满不透明。墨模式不受影响。
 - **停止条件。** 最后一次注入后 `max(trail, drift) × 3 + 0.5 s`（默认 ≈2.3 s）停 rAF；`autoplay` 开启时漫游者会持续注入，所以「空闲零 rAF」只适用于 `autoplay=false`、`prefers-reduced-motion`、或指针仍在页面内且墨迹已经衰减完的情况。
 - **主题只读一次。** `auto` 在初始化与 `class` / `style` / `data-theme` 变化时读祖先背景亮度，不每帧读样式。`MutationObserver` 不在 `requestAnimationFrame` 里做样式查询。
 - **指针事件只累加 Δ。** 事件里不绘制；每帧一次 splat，避免一帧多次重绘。
 
 ## 实测
 
-1440×900、`quality=medium`、`size=88`、`blur=12`，headless Chrome 155 / Node 24.16：
+1440×900、`quality=medium`、`size=93`、`blur=12`，headless Chrome 155 / Node 24.16：
 
 | 指标 | GPU 路径 | 软件光栅（`--disable-gpu`） |
 | --- | --- | --- |
-| JS 帧工作 p95 | **5.9–6.6 ms**（多次运行） | **6.1 ms** |
+| JS 帧工作 p95 | **5.2 ms**（多次运行 4.8–6.6） | **3.9 ms** |
 | 网格 | 320×200（64k 格） | 320×200 |
 | 空闲 1 s 的 rAF 增量（`autoplay=0`） | **0** | 0 |
 | reduced-motion 1 s 的 rAF 增量 | **0** | 0 |
@@ -112,6 +116,7 @@ p95 是引擎自己测的「field + render + putImageData」时间，不含浏�
 ## 已知边界
 
 - `mode="auto"` 只读祖先的**纯色背景**。背景是图片 / 渐变 / 视频时请显式传 `mode`。
+- 白色烟是 `screen` 的加法：只在深色背景上可见；浅色页请用 `#362E82` 之类的墨色（演示页会自动切换）。
 - 画布 backing store 是网格尺寸，2× 屏上会偏软；这是刻意的性能取舍。不要在小尺寸画布上放正文。
 - 64k 格是 CPU 预算；更大的容器会被上限截断（单元更大、更软），不会更慢。`quality` 是性能旋钮。
 - CPU 场始终比 WebGL 版慢；p95 数字绑定环境，换机器请用 `tools/verify_behavior.js` 重测。

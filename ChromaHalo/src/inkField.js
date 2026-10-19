@@ -141,10 +141,17 @@ export function splat(field, {
   const radiusY = Math.max(0.5, (Math.max(1, sizePx) / Math.max(1, cssHeight)) * height);
   const cx = x * width - 0.5;
   const cy = y * height - 0.5;
-  const x0 = Math.max(0, Math.floor(cx - radiusX));
-  const x1 = Math.min(width - 1, Math.ceil(cx + radiusX));
-  const y0 = Math.max(0, Math.floor(cy - radiusY));
-  const y1 = Math.min(height - 1, Math.ceil(cy + radiusY));
+  // `size` is the half-strength radius, not the edge. The Gaussian has to be
+  // sampled out to 2.5x that radius: truncating at 1x cut it exactly at weight
+  // 0.5 and left a hard, square brush edge (a 176px box on 1440x900). At 2.5x
+  // the weight is 2^-6.25 = 0.013; the CSS blur finishes the edge. (3x was
+  // cleaner but paid 9x the cells for a skirt nobody can see.)
+  const supportX = radiusX * 2.5;
+  const supportY = radiusY * 2.5;
+  const x0 = Math.max(0, Math.floor(cx - supportX));
+  const x1 = Math.min(width - 1, Math.ceil(cx + supportX));
+  const y0 = Math.max(0, Math.floor(cy - supportY));
+  const y1 = Math.min(height - 1, Math.ceil(cy + supportY));
   const impulse = 40 * quality * force;
   let touched = 0;
 
@@ -154,9 +161,13 @@ export function splat(field, {
     for (let gx = x0; gx <= x1; gx++) {
       const du = (gx - cx) / radiusX;
       const d2 = du * du + dv2;
-      // 2^-16 is below the visible threshold; stop instead of spending exp on it
-      if (d2 > 16) continue;
-      const w = Math.pow(2, -d2);
+      if (d2 > 6.25) continue;
+      // Feather the last half of the support so the finite sampling box has no
+      // edge at all: weight is untouched out to 2x size, then ramps to zero at
+      // 2.5x. Without this a 2.5x box still reads as a faint square.
+      const edge = d2 <= 4 ? 1 : 1 - (d2 - 4) / 2.25;
+      if (edge <= 0) continue;
+      const w = Math.pow(2, -d2) * edge;
       const i = gy * width + gx;
       field.vx[i] += dx * impulse * w;
       field.vy[i] += dy * impulse * w;

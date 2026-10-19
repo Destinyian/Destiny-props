@@ -51,8 +51,11 @@ test('splat: exactly half strength at size px, round in screen space', () => {
   near(right, 0.5, 0.002, 'half strength to the right');
   near(down, 0.5, 0.002, 'half strength downward (brush stays round)');
   near(right, down, 1e-6, 'x and y falloff are identical');
-  // and it must actually fall off, not be a disc
-  assert.ok(sampleField(field, field.d, 0.7, 0.5) < 0.01, 'beyond 2x size the weight is negligible');
+  // the Gaussian continues past `size` — that skirt is why the edge is soft.
+  // Truncating at 1x (the old bug) cut it at weight 0.5 and made a square brush.
+  const twoX = sampleField(field, field.d, 0.7, 0.5);
+  assert.ok(twoX > 0.02 && twoX < 0.15, `2x size should be a soft skirt, got ${twoX}`);
+  assert.ok(sampleField(field, field.d, 0.8, 0.5) < 0.002, '2.5x size is negligible');
 });
 
 test('splat: impulse scales with 40 * quality * force and with the pointer delta', () => {

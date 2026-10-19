@@ -125,7 +125,7 @@ function applyTheme(next) {
   themeBtn.textContent = next === 'dark' ? 'Light page' : 'Dark page';
   halo.style.mixBlendMode = next === 'dark' ? 'screen' : 'multiply';
   halo.style.background = next === 'dark'
-    ? 'radial-gradient(closest-side, rgba(120, 104, 220, .55), transparent 70%)'
+    ? 'radial-gradient(closest-side, rgba(255, 255, 255, .62), transparent 70%)'
     : 'radial-gradient(closest-side, rgba(54, 46, 130, .55), transparent 70%)';
 }
 themeBtn.addEventListener('click', () => applyTheme(theme() === 'dark' ? 'light' : 'dark'));
